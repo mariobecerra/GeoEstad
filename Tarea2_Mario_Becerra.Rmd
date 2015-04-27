@@ -1,0 +1,182 @@
+---
+title: "Tarea 2 Estadística Espacial"
+author: "Mario Becerra 124362"
+date: "22/04/2015"
+header-includes:
+  - \usepackage[spanish]{babel}
+output:
+  pdf_document:
+    fig_caption: true
+fontsize: 12pt
+---
+
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+options(digits=4)
+library(knitr)
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(grid)
+library(kfigr)
+library(geoR)
+library(spatstat)
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+
+theme_nothing <- function(base_size = 12, base_family = "Helvetica")
+  {
+  theme_bw(base_size = base_size, base_family = base_family) %+replace%
+      theme(
+            #legend.text=element_blank(),
+            axis.text.x =  element_blank(),
+            axis.text.y =  element_blank(),
+            axis.title.x=  element_blank(),
+            axis.title.y=  element_blank(),
+            rect             = element_blank(),
+            line             = element_blank(),
+            #text             = element_blank(),
+            axis.ticks.margin = unit(0, "lines")
+           )
+  }
+
+#Tema para hacer gráficas sin fondo gris en ggplot
+empty_background <- function(base_size = 12, base_family = "Helvetica")
+  {
+  theme_bw(base_size = base_size, base_family = base_family) %+replace%
+      theme(
+            axis.ticks.margin = unit(0, "lines")
+           )
+  }
+
+#Agrega un color más a la paleta colorblind de ggthemes
+ggthemes_data$colorblind <- append(ggthemes_data$colorblind, "#80f7e9")
+assignInNamespace("ggthemes_data", ggthemes_data, ns="ggthemes")
+```
+
+\section{Introducción}
+
+\section{Análisis exploratorio de datos}
+
+Los datos que se usan en este proyecto corresponden a localidades de inicio de incendios forestales en la región de las Montañas Azules, en los estados de Oregon, Washington e Idaho. La información corresponde a incendios que comenzaron entre el 01 de abril de 1986 y el 31 de julio de 1993. Se tienen medidas las variables latitud, longitud, año, mes, día, tamaño, elevación, pendiente, orientación de la ladera donde ocurrió el incendio, días transcurridos desde el 1 de abril de 1986, y vegetación. Se pueden ver la presentación de los datos en la tabla `r figr('tabladatos', FALSE, TRUE, 'table')`.
+
+```{r, tabladatos, echo=FALSE, fig.align='center'}
+rayos <- read.csv('rayositam.csv')
+grid <- read.csv('bmgrid3.csv')
+pol <- read.table('poligono.txt')
+names(pol) <- c('lon', 'lat')
+kable(head(rayos), format='latex', caption='Presentación de los datos disponibles', align='c')
+```
+
+```{r, echo=FALSE}
+rayos$mo2[nchar(rayos$mo)==1]<-paste0(0,rayos$mo[nchar(rayos$mo)==1])
+rayos$mo2[nchar(rayos$mo)==2]<-rayos$mo[nchar(rayos$mo)==2]
+rayos$day2[nchar(rayos$day)==1]<-paste0(0,rayos$day[nchar(rayos$day)==1])
+rayos$day2[nchar(rayos$day)==2]<-rayos$day[nchar(rayos$day)==2]
+rayos.2 <- rayos %>% mutate(estac=ifelse(paste0(mo2,day2)<'0621' & paste0(mo2,day2)>='0321', 'Primavera', 
+                            ifelse(paste0(mo2,day2)<'0921' & paste0(mo2,day2)>='0621', 'Verano', 
+                                   ifelse(paste0(mo2,day2)<'1221' & paste0(mo2,day2)>='0921', 'Otoño', 'Invierno'))))
+rayos.2$elev_cat <- cut(rayos.2$elev, breaks=6)
+rayos.2$aspect_cat <- cut(rayos.2$aspect, breaks=6)
+```
+
+La dispersión de los incendios en el mapa se puede ver en la figura `r figr('puntosmapaelev', FALSE, TRUE, 'figure')`; donde se muestran los puntos de acuerdo a la elevación del terreno y el tamaño del incendio. Por el momento no se puede decir mucho sobre la relación que pueda existir entre las variables, excepto tal vez que al norte casi no hubo incendios y que en las zonas con menor elevación hay más incendios; sin embargo no son hipótesis que se puedan rechazar solamente viendo el mapa. La distribución de incendios pde acuerdo a la elevación se puede ver en la figura `r figr('incendioselevacion', FALSE, TRUE, 'figure')`. El mayor número de incendios está entre $1150$ m y $1920$ m de altura.
+
+```{r, puntosmapaelev, echo=FALSE, fig.cap='Dispersión de incendios en las Montañas Azules'}
+ggplot() + 
+  #geom_polygon(data=pol, aes(x=lon, y=lat), colour='black', fill='white') +
+  geom_point(data=grid, aes(x=lon, y=lat, colour=elev),inherit.aes=FALSE) +
+  scale_colour_gradient(low = "dark green", high = "chartreuse", name='Elevación del\nterreno') +
+  geom_point(data=rayos, aes(x=lon, y=lat, size=size), colour='black', alpha=0.6, inherit.aes=FALSE) +
+  guides(size=guide_legend('Tamaño del\nincendio')) + 
+  coord_fixed() + theme_nothing() 
+
+# ggplot(pol, aes(x=lon, y=lat)) + geom_polygon(colour='black', fill='white') +
+#     geom_point(data=rayos, aes(x=lon, y=lat, colour=elev, size=size), inherit.aes=FALSE) +
+#     scale_colour_gradient(low = "dark green", high = "light green", name='Elevación del\nterreno') +
+#     guides(size=guide_legend('Tamaño')) + 
+#     coord_fixed() + theme_nothing() 
+```
+
+```{r, incendioselevacion, fig.cap='Distribución del número de incendios de acuerdo a la elevación', fig.height=4, fig.width=3}
+rayos_elev_temp <- rayos.2 %>% group_by(yr, elev_cat) %>% summarise(Número=n()) %>% mutate(Proporción=Número/sum(Número))
+
+ggplot(rayos_elev_temp, aes(x=elev_cat, y=Proporción)) + xlab('Elevación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('hj')) + theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+Ahora, se analizará la elevación en el contexto temporal. En la figura `r figr('incendioselevacion', FALSE, TRUE, 'figure')` se aprecia la distribución del número de incendios de acuerdo a la elevación y al año. En cada año se mantiene la misma forma y la mayoría de los incendios ocurren a la misma altura en cada año, así que con solo ver la gráfica, se puede rechazar la hipótesis de dependencia temporal.
+
+```{r, incendioselevaciontemp, fig.cap='Distribución del número de incendios de acuerdo a la elevación por año'}
+ggplot(rayos_elev_temp, aes(x=elev_cat, y=Proporción)) + xlab('Elevación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('hj')) + theme(axis.text.x = element_text(angle = 35, hjust = 1)) + facet_wrap(~yr)
+```
+
+
+Si se divide a los datos por año y los se ven en el plano como en la figura `r figr('puntosmapaanio', FALSE, TRUE, 'figure')`, se ve que hubo mayor número de incendios en 1986 y menos en 1993, pero no parece haber un patrón muy evidente en la distribución espacial.
+
+```{r, puntosmapaanio, echo=FALSE, fig.cap='Dispersión de incendios en las Montañas Azules por año'}
+ggplot() +
+  geom_point(data=grid, aes(x=lon, y=lat, colour=elev),inherit.aes=FALSE) +
+  scale_colour_gradient(low = "dark green", high = "chartreuse", name='Elevación del\nterreno') +
+  geom_point(data=rayos, aes(x=lon, y=lat, size=size), colour='black', alpha=0.6, inherit.aes=FALSE) +
+  guides(size=guide_legend('Tamaño del\nincendio')) + 
+  coord_fixed() + theme_nothing()  + facet_wrap(~yr)
+```
+
+Un factor importante que puede afectar el número de incendios es el tipo de vegetación, pues algunos tipos de planta son más fáciles de encenderse y dispersarse que otros. Esto se puede ver en la figura `r figr('incendiosvegetacion', FALSE, TRUE, 'figure')`, donde se aprecia que los tipos de vegetación 5,6 y 7 tienen mayor número de incendios.
+
+```{r, incendiosvegetacion, fig.cap='Distribución del número de incendios de acuerdo al tipo de vegetación', fig.height=3.5, fig.width=3}
+rayos_veg <- rayos.2 %>% group_by(veg9) %>% summarize(Número=n())
+ggplot(rayos_veg, aes(x=factor(veg9), y=Número)) + xlab('Tipo de vegetación') + ylab('Número de incendios') + geom_bar(stat='identity')
+```
+
+Tal vez sea conveniente buscar alguna relación temporal en los incendios sin tomar en cuenta el factor espacial; para esto, agrupamos el número de incendios por año y por mes. En la figura `r figr('numaniomes', FALSE, TRUE, 'figure')` se puede ver, como ya se había mencionado, que hubo mayor número de incendios en 1986; y algo que es notable, pero no sorprendente, es que en los meses de verano hay mayor número de incendios.
+
+```{r, numaniomes, fig.cap='Número de incendios por año y por estación en las Montañas Azules'}
+rayos_mensual.2 <- rayos.2 %>% group_by(yr, estac) %>% summarise(Número=n())
+ggplot(rayos_mensual.2, aes(x=yr, y=Número, fill=factor(estac))) + xlab('Año') + ylab('Número de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('Estación')) + scale_fill_colorblind()
+```
+
+Se vio que hay mayor número de incendios en verano y que el mayor número de incendios provienen de vegetación tipo 5, 6 y 7; pero tal vez el riesgo de incendio cambie de acuerdo a la estación. La figura `r figr('propestacveg', FALSE, TRUE, 'figure')` muestra esta relación. Se descartaron los incendios sucedidos en invierno porque solo ocurrieron `r sum(rayos.2$estac=='Invierno')` en total; sin embargo, en las estaciones restantes se puede ver un patrón algo regular, aunque sí se puede notar que el número de incendios del tipo de vegetación 1 es mayor en primavera, y que el de tipo 4 es menor. Es difícil rechazar algún tipo de dependencia entre las variables de esta forma; para mayor confianza, se puede hacer una prueba \textit{Ji-cuadrada}, pero como no es el interés en este estudio, no se lleva a cabo.
+
+```{r, propestacveg, fig.cap='Proporción del número de incendios por estación en las Montañas Azules'}
+rayos.estacion.veg <- rayos.2[rayos.2$estac!='Invierno',] %>% group_by(estac, veg9) %>% summarize(Número=n()) %>% mutate(prop=Número/sum(Número))
+ggplot(rayos.estacion.veg, aes(x=estac, y=prop, fill=factor(veg9))) + geom_bar(stat='identity') + xlab('Estación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('Tipo de\nvegetación')) + scale_fill_colorblind() + empty_background()
+```
+
+\section{Metodología}
+
+Ya que se ha analizado los datos con los que se cuenta y se han analizado algunos aspectos, se procede a ajustar y probar modelos estadísticos.
+
+```{r, eval=FALSE}
+pol.2 <- pol %>% arrange(-row_number())
+w<-owin(poly=as.matrix(pol.2))
+rayos.ppp <- as.ppp(cbind(rayos.2$lon,rayos.2$lat), w)
+qcount50 <- quadratcount(rayos.ppp,nx=50,ny=50)
+save(qcount50, file='./Out/qcount50.Rdata')
+qcount100 <- quadratcount(rayos.ppp, nx=100,ny=100)
+save(qcount100, file='./Out/qcount100.Rdata')
+```
+```{r}
+load('./Out/qcount50.Rdata')
+load('./Out/qcount100.Rdata')
+qcount50num <- as.numeric(qcount50)
+qcount100num <- as.numeric(qcount100)
+var(qcount50num)/mean(qcount50num)
+var(qcount100num)/mean(qcount100num)
+
+distancias.rayos.2 <- as.matrix(dist(cbind(rayos.2$lon,rayos.2$lat)))
+summary(diag(distanciasCS))
+diag(distanciasCS)<-2*max(distanciasCS)
+distmin<-rep(0,nrow(incendiosCS))
+for(i in 1:nrow(distmin))distmin[i]<-min(distanciasCS[i,])
+
+mean(distmin)
+
+puntosCS<-as.ppp(cbind(incendiosCS$x,incendiosCS$y),w)
+summary(puntosCS)
+```
+
+
+
+
+
