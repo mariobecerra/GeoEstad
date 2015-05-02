@@ -4,25 +4,28 @@ author: "Mario Becerra 124362"
 date: "22/04/2015"
 header-includes:
   - \usepackage[spanish]{babel}
+  - \spanishdecimal{.}
 output:
   pdf_document:
     fig_caption: true
+bibliography: bibliography.bib
+csl: spanish-legal.csl
 fontsize: 12pt
 ---
 
----
-
 ```{r setup, echo=FALSE, message=FALSE}
-options(digits=4)
+options(digits=2)
 library(knitr)
 library(ggplot2)
 library(ggthemes)
 library(dplyr)
+library(tidyr)
 library(grid)
 library(kfigr)
 library(geoR)
 library(spatstat)
-knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+library(xtable)
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE)
 
 theme_nothing <- function(base_size = 12, base_family = "Helvetica")
   {
@@ -52,20 +55,27 @@ empty_background <- function(base_size = 12, base_family = "Helvetica")
 #Agrega un color más a la paleta colorblind de ggthemes
 ggthemes_data$colorblind <- append(ggthemes_data$colorblind, "#80f7e9")
 assignInNamespace("ggthemes_data", ggthemes_data, ns="ggthemes")
+
+#csl descargado de: https://github.com/citation-style-language/styles/blob/master/spanish-legal.csl
+#Info de: http://rmarkdown.rstudio.com/authoring_bibliographies_and_citations.html#citation-and-reference-styles
 ```
 
 \section{Introducción}
 
+Las Montañas Azules son una cadena montañosa localizada en el noroeste de los Estados Unidos, que se extiende largamente por el este del estado de Oregón y el sudeste de Washington. En este trabajo se realiza un estudio sobre los incendios ocurridos en la zona con base en análisis estadístico-espacial, incluyendo variables como la vegetación y la elevación del terreno en la zona donde ocurre cada incendio. Se analiza el riesgo de incendio de distintos tipos de vegetación y se hace un análisis temporal del riesgo que existe en diferentes épocas del año.
+
 \section{Análisis exploratorio de datos}
+
+Antes de hacer cualquier tipo de modelo estocástico y antes de hacer cualquier tipo de prueba de hipótesis, es necesario analizar los datos que se tienen a la mano mediante un análisis exploratorio de datos. Esta parte es crucial en cualquier análisis estadístico pues en este primer paso se encuentra mucha información relevante sobre el fenómeno que se está trabajando.
 
 Los datos que se usan en este proyecto corresponden a localidades de inicio de incendios forestales en la región de las Montañas Azules, en los estados de Oregon, Washington e Idaho. La información corresponde a incendios que comenzaron entre el 01 de abril de 1986 y el 31 de julio de 1993. Se tienen medidas las variables latitud, longitud, año, mes, día, tamaño, elevación, pendiente, orientación de la ladera donde ocurrió el incendio, días transcurridos desde el 1 de abril de 1986, y vegetación. Se pueden ver la presentación de los datos en la tabla `r figr('tabladatos', FALSE, TRUE, 'table')`.
 
-```{r, tabladatos, echo=FALSE, fig.align='center'}
-rayos <- read.csv('rayositam.csv')
-grid <- read.csv('bmgrid3.csv')
-pol <- read.table('poligono.txt')
+```{r, tabladatos, echo=FALSE, results='asis'}
+rayos <- read.csv('./Datos/rayositam.csv')
+grid <- read.csv('./Datos/bmgrid3.csv')
+pol <- read.table('./Datos/poligono.txt')
 names(pol) <- c('lon', 'lat')
-kable(head(rayos), format='latex', caption='Presentación de los datos disponibles', align='c')
+xtable(head(rayos), caption='Presentación de los datos disponibles')
 ```
 
 ```{r, echo=FALSE}
@@ -98,13 +108,13 @@ ggplot() +
 #     coord_fixed() + theme_nothing() 
 ```
 
-```{r, incendioselevacion, fig.cap='Distribución del número de incendios de acuerdo a la elevación', fig.height=4, fig.width=3}
+```{r, incendioselevacion, fig.cap='Distribución del número de incendios de acuerdo a la elevación', fig.height=3, fig.width=3}
 rayos_elev_temp <- rayos.2 %>% group_by(yr, elev_cat) %>% summarise(Número=n()) %>% mutate(Proporción=Número/sum(Número))
 
 ggplot(rayos_elev_temp, aes(x=elev_cat, y=Proporción)) + xlab('Elevación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('hj')) + theme(axis.text.x = element_text(angle = 25, hjust = 1))
 ```
 
-Ahora, se analizará la elevación en el contexto temporal. En la figura `r figr('incendioselevacion', FALSE, TRUE, 'figure')` se aprecia la distribución del número de incendios de acuerdo a la elevación y al año. En cada año se mantiene la misma forma y la mayoría de los incendios ocurren a la misma altura en cada año, así que con solo ver la gráfica, se puede rechazar la hipótesis de dependencia temporal.
+Ahora, se analizará la elevación en el contexto temporal. En la figura `r figr('incendioselevaciontemp', FALSE, TRUE, 'figure')` se aprecia la distribución del número de incendios de acuerdo a la elevación y al año. En cada año se mantiene la misma forma y la mayoría de los incendios ocurren a la misma altura en cada año, así que con solo ver la gráfica, se puede rechazar la hipótesis de dependencia temporal.
 
 ```{r, incendioselevaciontemp, fig.cap='Distribución del número de incendios de acuerdo a la elevación por año'}
 ggplot(rayos_elev_temp, aes(x=elev_cat, y=Proporción)) + xlab('Elevación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('hj')) + theme(axis.text.x = element_text(angle = 35, hjust = 1)) + facet_wrap(~yr)
@@ -131,26 +141,57 @@ ggplot(rayos_veg, aes(x=factor(veg9), y=Número)) + xlab('Tipo de vegetación') 
 
 Tal vez sea conveniente buscar alguna relación temporal en los incendios sin tomar en cuenta el factor espacial; para esto, agrupamos el número de incendios por año y por mes. En la figura `r figr('numaniomes', FALSE, TRUE, 'figure')` se puede ver, como ya se había mencionado, que hubo mayor número de incendios en 1986; y algo que es notable, pero no sorprendente, es que en los meses de verano hay mayor número de incendios.
 
-```{r, numaniomes, fig.cap='Número de incendios por año y por estación en las Montañas Azules'}
+```{r, numaniomes, fig.cap='Número de incendios por año y por estación en las Montañas Azules', fig.height=3, fig.width=6.5}
 rayos_mensual.2 <- rayos.2 %>% group_by(yr, estac) %>% summarise(Número=n())
 ggplot(rayos_mensual.2, aes(x=yr, y=Número, fill=factor(estac))) + xlab('Año') + ylab('Número de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('Estación')) + scale_fill_colorblind()
 ```
 
 Se vio que hay mayor número de incendios en verano y que el mayor número de incendios provienen de vegetación tipo 5, 6 y 7; pero tal vez el riesgo de incendio cambie de acuerdo a la estación. La figura `r figr('propestacveg', FALSE, TRUE, 'figure')` muestra esta relación. Se descartaron los incendios sucedidos en invierno porque solo ocurrieron `r sum(rayos.2$estac=='Invierno')` en total; sin embargo, en las estaciones restantes se puede ver un patrón algo regular, aunque sí se puede notar que el número de incendios del tipo de vegetación 1 es mayor en primavera, y que el de tipo 4 es menor. Es difícil rechazar algún tipo de dependencia entre las variables de esta forma; para mayor confianza, se puede hacer una prueba \textit{Ji-cuadrada}, pero como no es el interés en este estudio, no se lleva a cabo.
 
-```{r, propestacveg, fig.cap='Proporción del número de incendios por estación en las Montañas Azules'}
+```{r, propestacveg, fig.cap='Proporción del número de incendios por estación en las Montañas Azules', fig.height=3.5, fig.width=6.5}
 rayos.estacion.veg <- rayos.2[rayos.2$estac!='Invierno',] %>% group_by(estac, veg9) %>% summarize(Número=n()) %>% mutate(prop=Número/sum(Número))
 ggplot(rayos.estacion.veg, aes(x=estac, y=prop, fill=factor(veg9))) + geom_bar(stat='identity') + xlab('Estación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('Tipo de\nvegetación')) + scale_fill_colorblind() + empty_background()
 ```
 
 \section{Metodología}
 
-Ya que se ha analizado los datos con los que se cuenta y se han analizado algunos aspectos, se procede a ajustar y probar modelos estadísticos.
+Es de interés saber si los incendios se distribuyen al azar o si existe alguna dependencia espacial; puede ser que exista alguna tendencia a una configuración de conglomerados (\textit{clusters}). Aunque ya se analizó un poco esto visualmente, en esta sección se irá más a fondo en el aspecto cuantitativo y con herramientas de estadística espacial se procederá a ajustar y probar modelos; en particular, modelos de procesos puntuales para datos espaciales.
+
+Un punto de partida conveniente en el análisis de procesos puntuales espaciales es probar la hipótesis de \textbf{Aleatoriedad Espacial Completa} (AEC), la cual se puede definir la AEC como un proceso Poisson homogéneo (PPH) en $\mathbb{R}^n$, esto es, el número de puntos contenidos en cualquier región $A$, $N(A)$, sigue una distribución Poisson con media $lambda \vert A \vert$; donde $\vert A \vert$ es el área de la región $A$ y $\lambda$ es el parámetro de intensidad del proceso y además los puntos en la región $A$ se distribuyen de manera aleatoria e independiente con distribución uniforme en $A$. Esto significa que si esta hipótesis fuera cierta, entonces los eventos (incendios en este caso) ocurren totalmente al azar, de forma constante en la región y que no hay interacción entre eventos.
+
+Existen diversos estadísticos utilizados para probar la hipótesis de AEC; uno particular está basado en conteos de eventos en cuadrantes (áreas bien definidas, usualmente rectangulares) en la región de interés $A$. Otro estadístico está basado en distancias entre eventos, en específico, el vecino más cercano, ya sea desde un punto $x$ del patrón observado, o desde un punto arbitrario. Y otro más es la $K$ de Ripley, la cual se define como $K(h) = \dfrac{1}{\lambda} \mathbb{E}$[# extra de eventos dentro de una distancia $h$ a un evento arbitrario].
+
+Para el primer caso (conteos), si suponemos una partición del espacio de interés en $m$ cuadrantes y en cada uno hay $n_1, n_2, ..., n_m$ eventos, un estadístico natural es el \textbf{índice de dispersión} definido como $I = \sum\limits_{i=1}^m \dfrac{(n_i - \overline{n})^2}{(m-1) \overline{n}}$, que bajo AEC debe tomar valor igual a $1$.
+
+Otro estadístico que se usa es $I' =  \dfrac{(m-1)\sum\limits_{i=1}^m (c_i - \overline{c})^2}{\overline{c}} = (m-1)I$. Bajo AEC $I' \sim \chi^2_{(m-1)}$, por lo que se rechaza la hipótesis de AEC al nivel de significancia $\alpha$ si $I' > \chi^2_{(m-1)(1 - \alpha)}$.
+
+Para el caso del método basado en distancias se define la variable aleatoria $D$ como la distancia de un evento arbitrario al evento más cercano, entonces, bajo AEC, 
+
+$$\mathbb{P}(D>d) = 1 - e^{- \lambda \pi d^2}.$$
+
+Entonces la media y la varianza de $D$ son $\mathbb{E}[D] = \dfrac{1}{2 \sqrt{\lambda}}$ y $Var[D] = \dfrac{4 - \pi}{4 \lambda \pi}$. Por esto, si se defina $\overline{D}$ como la media muestral de las distancias, asumiendo $n$ v.a.i.i.d., se tiene que
+$\mathbb{E}[\overline{D}] = \dfrac{1}{2 \sqrt{\lambda}}$ y 
+$Var[\overline{D}] = \dfrac{4 - \pi}{4 n \lambda \pi}$; por lo que centrando
+$$Z = \dfrac{\overline{D} - 1/ (2 \sqrt{\lambda})}{\sqrt{(4-\pi)/(4n\pi\lambda)}} \underset{n \to \infty}{\sim} N(0,1).$$
+
+Así, si $n$ es grande, el IC para AEC tendrá la forma $\overline{D} \pm Z_{1- \alpha / 2} \sqrt{(4-\pi)(4n\pi\lambda)}$.
+
+En el caso de la $K$ de Ripley, si hubiera AEC entonces $K(h) = \pi h^2$, pues el número de puntos dentro de un radio $h$ debe ser proporcional al área del círculo de radio $h$. Si los datos estuvieran en conglomerados, uno esperaría que $K(h) > \pi h^2$, mientras que si hubiera algún tipo de repulsión se esperaría que $K(h) < \pi h^2$. La versión muestral de la $K$ de Ripley es 
+$$\hat{K}(h) = \dfrac{\vert A \vert}{n^2} \sum\limits_{i=1}^{n} \sum\limits_{i \neq j}^{} \dfrac{I_h(d_{ij})}{w_{ij}} $$
+donde $m$ es el número de eventos en $A$, $w_{ij}$ es la proporción del círculo con centro en $i$ y que pasa por $j$ que está dentro de $A$, $d_{ij}$ es la distancia entre los puntos $i$ y $j$, $I$ es la función indicadora para la distancia $d_{ij}$.
+
+Muchas veces se usa la función $L(h) = \sqrt{\dfrac{K(h)}{\pi}} - h$, pues la varianza de $L$ es aproximadamente constante bajo AEC. En la práctica se grafica $t - \hat{L}(t)$ contra $t$, la cual, en el caso de AEC, deberá ser aproximadamente una línea horizontal en el cero.
+
+Si se rechaza la hipótesis de AEC, se deben considerar procesos no homogéneos. La extensión más simple es el Proceso Poisson no homogéneo (PPNH), el cual cumple los mismos principios de el PPH, excepto que la función de intensidad depende del sitio, $\lambda(x)$. Entonces, para un área $B \subset A$, se tiene que $\mathbb{E}[N(B)] = \int_{B} \lambda(u) du$ y $\mathbb{P}(N(b) = n) = \dfrac{[\int_{B} \lambda(u) du]^n \exp^{\int_{B} \lambda(u) du}}{n!}$. A este modelo se le pueden agregar más covariables referentes al sitio; por ejemplo, la elevación y la humedad del sitio.
+
+\section{Resultados y discusión}
 
 ```{r, eval=FALSE}
 pol.2 <- pol %>% arrange(-row_number())
 w<-owin(poly=as.matrix(pol.2))
+save(w, file='Out/window.Rdata')
 rayos.ppp <- as.ppp(cbind(rayos.2$lon,rayos.2$lat), w)
+save(rayos.ppp, file='Out/rayos.ppp.Rdata')
 qcount50 <- quadratcount(rayos.ppp,nx=50,ny=50)
 save(qcount50, file='./Out/qcount50.Rdata')
 qcount100 <- quadratcount(rayos.ppp, nx=100,ny=100)
@@ -159,24 +200,195 @@ save(qcount100, file='./Out/qcount100.Rdata')
 ```{r}
 load('./Out/qcount50.Rdata')
 load('./Out/qcount100.Rdata')
+load('./Out/distancias.rayos.2.Rdata')
+load('Out/rayos.ppp.Rdata')
+load('Out/window.Rdata')
+
 qcount50num <- as.numeric(qcount50)
 qcount100num <- as.numeric(qcount100)
-var(qcount50num)/mean(qcount50num)
-var(qcount100num)/mean(qcount100num)
-
-distancias.rayos.2 <- as.matrix(dist(cbind(rayos.2$lon,rayos.2$lat)))
-summary(diag(distanciasCS))
-diag(distanciasCS)<-2*max(distanciasCS)
-distmin<-rep(0,nrow(incendiosCS))
-for(i in 1:nrow(distmin))distmin[i]<-min(distanciasCS[i,])
-
-mean(distmin)
-
-puntosCS<-as.ppp(cbind(incendiosCS$x,incendiosCS$y),w)
-summary(puntosCS)
+I50 <- var(qcount50num)/mean(qcount50num)
+I100 <- var(qcount100num)/mean(qcount100num)
 ```
 
+Para el caso de estudio de este trabajo se llevaron a cabo dos casos distintos para la primera prueba de conteos, uno con $50$ particiones y otro con $100$ particiones. Notar que estas particiones se hacen sobre un cuadrado, pero el área de las Montañas Azules es irregular, por lo que al final no se tienen $2500$ y $10000$ respectivamente, sino menos, en particular, se tienen $`r length(qcount50)`$ y $`r length(qcount100)`$. Para el caso con $50$ particiones se tuvo que $I_{50} = `r I50`$ y para $100$ se tiene  $I_{100} = `r I100`$. Como en ambos casos el índice es mayor a uno, podemos rechazar AEC bajo este esquema.
 
+Para la segunda prueba, con 50 $I'_{50} = `r (length(qcount50num)-1)*I50`$ y con 100 $I'_{100} = `r (length(qcount100num)-1)*I100`$, y para una $\alpha = 0.01$, se tiene que $\chi^2_{(m-1)(1 - \alpha)} = `r qchisq(.05, length(qcount50num)-1)`$, por lo que con esta prueba también se rechaza AEC.
 
+```{r, eval=TRUE}
+lambda <- as.numeric(as.character(summary(rayos.ppp))[4])
+diag(distancias.rayos.2)<-2*max(distancias.rayos.2)
+distmin <- apply(distancias.rayos.2, 1, min)
 
+hexpect <- 1/(2*sqrt(lambda))
+varh <- (4-pi) / (4*nrow(rayos.2)*lambda*pi)
 
+#Intervalo de confianza para hbarra
+ICa <- mean(distmin)-qnorm(.975)*sqrt(varh)
+ICb <- mean(distmin)+qnorm(.975)*sqrt(varh)
+#hbarra en el IC?
+#No está
+
+```
+
+También se llevó a cabo la prueba de distancias y se llegó al IC $[`r ICa`,`r ICb`]$ con una $\overline{D} = `r hexpect`$. Claramente $\overline{D} \notin [`r ICa`,`r ICb`]$, por lo que también con esta prueba se rechaza AEC.
+
+Las pruebas anteriores se hicieron para los datos completos, es decir, incluyen a todos los años, pero si se separaran por año podríamos ver si existe algún patrón temporal en los incendios. Para los casos de cada año ya no se hicieron dos casos, sino que se usaron solo 50 particiones.
+
+```{r}
+rayos.ppp.89 <- as.ppp(cbind(rayos.2$lon[rayos.2$yr==89],rayos.2$lat[rayos.2$yr==89]), w)
+rayos.ppp.90 <- as.ppp(cbind(rayos.2$lon[rayos.2$yr==90],rayos.2$lat[rayos.2$yr==90]), w)
+rayos.ppp.91 <- as.ppp(cbind(rayos.2$lon[rayos.2$yr==91],rayos.2$lat[rayos.2$yr==91]), w)
+rayos.ppp.92 <- as.ppp(cbind(rayos.2$lon[rayos.2$yr==92],rayos.2$lat[rayos.2$yr==92]), w)
+rayos.ppp.93 <- as.ppp(cbind(rayos.2$lon[rayos.2$yr==93],rayos.2$lat[rayos.2$yr==93]), w)
+```
+```{r, eval=FALSE}
+qcount50.89 <- quadratcount(rayos.ppp.89,nx=50,ny=50)
+save(qcount50.89, file='./Out/qcount50.89.Rdata')
+qcount50.90 <- quadratcount(rayos.ppp.90,nx=50,ny=50)
+save(qcount50.90, file='./Out/qcount50.90.Rdata')
+qcount50.91 <- quadratcount(rayos.ppp.91,nx=50,ny=50)
+save(qcount50.91, file='./Out/qcount50.91.Rdata')
+qcount50.92 <- quadratcount(rayos.ppp.92,nx=50,ny=50)
+save(qcount50.92, file='./Out/qcount50.92.Rdata')
+qcount50.93 <- quadratcount(rayos.ppp.93,nx=50,ny=50)
+save(qcount50.93, file='./Out/qcount50.93.Rdata')
+```
+```{r}
+load('./Out/qcount50.89.Rdata')
+load('./Out/qcount50.90.Rdata')
+load('./Out/qcount50.91.Rdata')
+load('./Out/qcount50.92.Rdata')
+load('./Out/qcount50.93.Rdata')
+qcount50.89num <- as.numeric(qcount50.89)
+qcount50.90num <- as.numeric(qcount50.90)
+qcount50.91num <- as.numeric(qcount50.91)
+qcount50.92num <- as.numeric(qcount50.92)
+qcount50.93num <- as.numeric(qcount50.93)
+I89 <- var(qcount50.89num)/mean(qcount50.89num)
+I90 <- var(qcount50.90num)/mean(qcount50.90num)
+I91 <- var(qcount50.91num)/mean(qcount50.91num)
+I92 <- var(qcount50.92num)/mean(qcount50.92num)
+I93 <- var(qcount50.93num)/mean(qcount50.93num)
+```
+
+Para cada año se tienen los siguientes índices de dispersión: $I_{89} = `r I89`$, $I_{90} = `r I90`$, $I_{91} = `r I91`$, $I_{92} = `r I92`$, $I_{93} = `r I93`$. Todos son mayores que 1, por lo que se rechaza la hipótesis de AEC en cada año.
+
+```{r, eval=FALSE}
+# Calculamos la K estimada para cada año
+K.rayos.89 <- Kest(rayos.ppp.89)
+save(K.rayos.89, file='./Out/K.rayos.89.Rdata')
+K.rayos.90 <- Kest(rayos.ppp.90)
+save(K.rayos.90, file='./Out/K.rayos.90.Rdata')
+K.rayos.91 <- Kest(rayos.ppp.91)
+save(K.rayos.91, file='./Out/K.rayos.91.Rdata')
+K.rayos.92 <- Kest(rayos.ppp.92)
+save(K.rayos.92, file='./Out/K.rayos.92.Rdata')
+K.rayos.93 <- Kest(rayos.ppp.93)
+save(K.rayos.93, file='./Out/K.rayos.93.Rdata')
+```
+```{r, ripleyanual, fig.cap='La función $L(h)$, transformación de la $K$ de Ripley para cada año de estudio. En todas está lejos de ser una línea horizontal.', fig.height=3.5, fig.width=5.5}
+load('./Out/K.rayos.89.Rdata')
+load('./Out/K.rayos.90.Rdata')
+load('./Out/K.rayos.91.Rdata')
+load('./Out/K.rayos.92.Rdata')
+load('./Out/K.rayos.93.Rdata')
+
+Ripley <- data.frame(border = c(K.rayos.89$border, K.rayos.90$border, K.rayos.91$border, K.rayos.92$border, K.rayos.93$border), 
+                     r = c(K.rayos.89$r, K.rayos.90$r, K.rayos.91$r, K.rayos.92$r, K.rayos.93$r),
+                     year = c(rep(1989, nrow(K.rayos.89)), rep(1990, nrow(K.rayos.89)), rep(1991, nrow(K.rayos.89)), rep(1992, nrow(K.rayos.89)), rep(1993, nrow(K.rayos.89))))
+Ripley$border2 <- Ripley$border
+Ripley$border2[which(is.nan(Ripley$border))] <- Inf
+
+ggplot(Ripley) + geom_line(aes(x=r, y=sqrt(border/pi) - r)) + geom_hline(aes(yintercept=0), colour='blue') + facet_wrap(~year) + xlab('h') + ylab('L(h) - h')
+```
+
+También se calculó la función $\hat{L}(h)$ para cada año y se graficaron los resultados, los cuales se pueden ver en la figura `r figr('ripleyanual', FALSE, TRUE, 'figure')`. En este estudio también se rechaza AEC pues las gráficas no representan una línea recta horizontal. Además, en esa misma figura se observa que $\hat{K}(h) > \pi h^2$ para la mayoría de los valores de $h$, por lo que se puede decir que los incendios tienden a ser en conglomerados. Esto tiene sentido pues la vegetación y las condiciones propicias para incendio usualmente se comportan de esta manera.
+
+Después de diversas pruebas, se concluye que en este caso no existe AEC. El siguiente paso es usar un modelo que se ajuste a los datos. Como se mencionó antes, el proceso Poisson no homogéneo es la alternativa más sencilla al proceso de Poisson homogéneo. Se ajustaron tres modelos distintos para distintas estaciones del año, esto es, un modelo para verano, uno para primavera y uno último para otoño. Se descartó invierno por el muy bajo número de incendios que se tienen.
+
+```{r, eval=FALSE}
+rayos.verano <- dplyr::filter(rayos.2, estac=='Verano')
+rayos.otono <- dplyr::filter(rayos.2, estac=='Otoño')
+rayos.primavera <- dplyr::filter(rayos.2, estac=='Primavera')
+
+rayos.verano.ppp <- as.ppp(rayos.2[rayos.2$estac=='Verano',c(1,2)], w)
+rayos.otono.ppp <- as.ppp(rayos.2[rayos.2$estac=='Otoño',c(1,2)], w)
+rayos.primavera.ppp <- as.ppp(rayos.2[rayos.2$estac=='Primavera',c(1,2)], w)
+
+# mod0.verano <- ppm(rayos.verano.ppp)
+# mod1.verano <- ppm(rayos.verano.ppp, ~x+y)
+# mod2.verano <- ppm(rayos.verano.ppp, ~x)
+# mod3.verano <- ppm(rayos.verano.ppp, trend=~elev+exp+sope+veg, covariates=grid[,c(3,4,5,6)])
+# rho.hat <- density.ppp(as.ppp(grid[,c(3,4,5,6)],w))
+# mod4.verano <- ppm(rayos.verano.ppp, trend=~offset(log(rho)), covariates = list(rho=rho.hat))
+
+#Felipe
+idx <- inside.owin(x=grid$lon, y=grid$lat, w=w)
+grid_puntos <- ppp(x = grid$lon[idx], y = grid$lat[idx], window=w)
+
+Q.verano <- quadscheme(data=rayos.verano.ppp, dummy=grid_puntos)
+covariates.verano <- rbind(dplyr::select(rayos.verano,elev,slope,veg=veg9),
+   dplyr::select(grid[idx,],elev,slope,veg)) %>%
+   mutate(veg = factor(veg)) 
+mod.verano <- ppm(Q.verano,  ~ elev+veg+slope, Poisson(), covariates = covariates.verano)
+
+Q.otono <- quadscheme(data=rayos.otono.ppp, dummy=grid_puntos)
+covariates.otono <- rbind(dplyr::select(rayos.otono,elev,slope,veg=veg9),
+   dplyr::select(grid[idx,],elev,slope,veg)) %>%
+   mutate(veg = factor(veg)) 
+mod.otono <- ppm(Q.otono,  ~ elev+veg+slope, Poisson(), covariates = covariates.otono)
+
+Q.primavera <- quadscheme(data=rayos.primavera.ppp, dummy=grid_puntos)
+covariates.primavera <- rbind(dplyr::select(rayos.primavera,elev,slope,veg=veg9),
+   dplyr::select(grid[idx,],elev,slope,veg)) %>%
+   mutate(veg = factor(veg)) 
+mod.primavera <- ppm(Q.primavera,  ~ elev+veg+slope, Poisson(), covariates = covariates.primavera)
+
+save(mod.primavera, file='./Out/mod.primavera.RData')
+save(mod.verano, file='./Out/mod.verano.RData')
+save(mod.otono, file='./Out/mod.otono.RData')
+
+# #Profe
+# mapa.elevacion<-im(grid$elev, xcol = grid$lon, yrow = grid$lat)
+# mapa.veg<-im(matrix(grid$veg, nrow = nrow(grid), ncol =nrow(grid), byrow=F), xcol = grid$lon, yrow = grid$lat)
+# mapa.pendiente<-im(matrix(grid$slope, nrow = nrow(grid), ncol =nrow(grid), byrow=F), xcol = grid$lon, yrow = grid$lat)
+# ###Checa por favor que la matriz creada sea consistente con la posición de los datos
+# ###Suponiendo que ya creaste varias covariables de la misma manera,
+# ##Crea el quadscheme CON LOS PUNTOS
+# VeranoQ.cov.elevacion=quadscheme(data=rayos.verano.ppp, dummy=list(x=grid$lon, y=grid$lat))
+# #lo que va en dummy es una retícula (en este caso de 100X100) puntos
+# ## Ahora sí, con las covariables que has creado hasta ahora, hay que crear una lista de imagenes:
+# rayos.covariables=list(mapa.elevacion=mapa.elevacion, mapa.veg=mapa.veg, mapa.pendiente=mapa.pendiente)
+# #Ya con esto, puedes ajustar el modelo que te interese.  En mi ejemplo es un modelo "Area Interaction"
+# mod1.verano=ppm(VeranoQ.cov.elevacion,~mapa.elevacion+mapa.pendiente+factor(mapa.veg), AreaInter(r=0.056), covariates = rayos.covariables)
+```
+
+```{r, tablacoefs, results='asis'}
+load(file='./Out/mod.primavera.RData')
+load(file='./Out/mod.verano.RData')
+load(file='./Out/mod.otono.RData')
+CoefModelos <- data.frame(Variable = names(mod.verano$coef), Primavera=mod.primavera$coef, Verano=mod.verano$coef, Otoño=mod.otono$coef, row.names=NULL)
+xtable(CoefModelos, caption='Coeficientes de los modelos ajustados', digits=4)
+```
+
+```{r, grafcoefs, fig.cap='Coeficientes estimados de las variables en cada modelo.', fig.height=3.5, fig.width=5.5}
+CoefsGraf <- CoefModelos %>% gather(Estación, Coeficiente, Primavera, Verano, Otoño)
+ggplot(CoefsGraf, aes(x=Variable, y=Coeficiente, color=Estación)) + geom_point(size=3) + theme(axis.text.x = element_text(angle = 35, hjust = 1))  + scale_colour_colorblind() 
+```
+
+En la tabla `r figr('tablacoefs', FALSE, TRUE, 'table')` se muestran los coeficientes estimados para cada uno de los modelos, y en la figura `r figr('grafcoefs', FALSE, TRUE, 'figure')` se muestra una gráfica de estos mismos coeficientes. Se puede ver que para los tres modelos el coeficiente de la elevación está muy cerca de cero; por lo que se puede decir que esta no afecta mucho al número de incendios. Se puede observar que para los distintos tipos de vegetación los coeficientes varían entre los modelos, y que además los que mayores coeficientes tienen en los tres modelos son los tipos 4, 5 y 6, aunque en el análisis exploratorio de datos se vio que el tipo 7 tenía más número de incendios. Es natural ver que los coeficientes de vegetación en primavera sean menores que en verano, y que los de otoño sean mayores a los de verano, pues la vegetación es más seca en otoño que en verano, y en verano que en primavera, por lo que las condiciones son más propicias para que haya incendios.
+
+\section{Conclusiones}
+
+En este estudio se profundizó mucho en el análisis exploratorio de datos pues es una herramienta esencial para el entendimiento del fenómeno, y para que a la hora de ajustar modelos se pueda tener conocimiento sobre si estos hacen sentido y son congruentes con los datos. En este caso así fue, los modelos que se ajustaron eran consistentes con lo que se vio en el análisis exploratorio. Uno de los primeros resultados que se nota en los modelos es la diferencia que existe en el riego de incendio de acuerdo a la época del año, aunque esto no debe sorprender pues es natural pensar que en época de calor hay más facilidad de incendio. 
+
+Otro resultado que se vio fue que los incendios tienden a estar en conglomerados o \textit{clusters}, se cree (pues no se tiene apoyo de conocimiento experto en este tema) que esto es porque la vegetación propicia para incendio tiende a estar cerca en forma de conglomerados, aunque este resultado no es concluyente, aunque se podría continuar con este estudio para probar esta hipótesis.
+
+También se vio en los modelos que los tipos de vegetación 4, 5 y 6 son más propensos a incendios, y esta propensión es mayor en otoño y menor en primavera. En los modelos no se notó que existiera mucha diferencia en el riesgo de incendios de acuerdo a la elevación, sin embargo, en el análisis exploratorio de datos se vio que el mayor número de incendios ocurre entre 1150 m y 1920 m de altura.
+
+\section{Bibliografía}
+
+---
+nocite: | 
+  @baner04, @cressie93, @dixon02
+---

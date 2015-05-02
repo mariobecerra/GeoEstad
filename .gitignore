@@ -1,2 +1,5 @@
+*.RData
 /Out/*
+/Tarea2_Mario_Becerra_cache/*
+/Tarea2_Mario_Becerra_files/*
 
