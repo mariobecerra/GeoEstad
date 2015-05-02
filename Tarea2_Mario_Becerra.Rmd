@@ -14,7 +14,7 @@ fontsize: 12pt
 ---
 
 ```{r setup, echo=FALSE, message=FALSE}
-options(digits=2)
+options(digits=2, xtable.comment = FALSE)
 library(knitr)
 library(ggplot2)
 library(ggthemes)
@@ -70,12 +70,12 @@ Antes de hacer cualquier tipo de modelo estocástico y antes de hacer cualquier 
 
 Los datos que se usan en este proyecto corresponden a localidades de inicio de incendios forestales en la región de las Montañas Azules, en los estados de Oregon, Washington e Idaho. La información corresponde a incendios que comenzaron entre el 01 de abril de 1986 y el 31 de julio de 1993. Se tienen medidas las variables latitud, longitud, año, mes, día, tamaño, elevación, pendiente, orientación de la ladera donde ocurrió el incendio, días transcurridos desde el 1 de abril de 1986, y vegetación. Se pueden ver la presentación de los datos en la tabla `r figr('tabladatos', FALSE, TRUE, 'table')`.
 
-```{r, tabladatos, echo=FALSE, results='asis'}
+```{r, tabladatos, echo=FALSE, results='asis', message=FALSE}
 rayos <- read.csv('./Datos/rayositam.csv')
 grid <- read.csv('./Datos/bmgrid3.csv')
 pol <- read.table('./Datos/poligono.txt')
 names(pol) <- c('lon', 'lat')
-xtable(head(rayos), caption='Presentación de los datos disponibles')
+print(xtable(head(rayos), caption='Presentación de los datos disponibles'), comment=FALSE)
 ```
 
 ```{r, echo=FALSE}
@@ -368,7 +368,7 @@ load(file='./Out/mod.primavera.RData')
 load(file='./Out/mod.verano.RData')
 load(file='./Out/mod.otono.RData')
 CoefModelos <- data.frame(Variable = names(mod.verano$coef), Primavera=mod.primavera$coef, Verano=mod.verano$coef, Otoño=mod.otono$coef, row.names=NULL)
-xtable(CoefModelos, caption='Coeficientes de los modelos ajustados', digits=4)
+print(xtable(CoefModelos, caption='Coeficientes de los modelos ajustados', digits=4), comment=FALSE)
 ```
 
 ```{r, grafcoefs, fig.cap='Coeficientes estimados de las variables en cada modelo.', fig.height=3.5, fig.width=5.5}
