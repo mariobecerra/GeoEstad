@@ -14,7 +14,7 @@ fontsize: 12pt
 ---
 
 ```{r setup, echo=FALSE, message=FALSE}
-options(digits=2, xtable.comment = FALSE)
+options(digits=2)
 library(knitr)
 library(ggplot2)
 library(ggthemes)
