@@ -68,7 +68,7 @@ Las Montañas Azules son una cadena montañosa localizada en el noroeste de los 
 
 Antes de hacer cualquier tipo de modelo estocástico y antes de hacer cualquier tipo de prueba de hipótesis, es necesario analizar los datos que se tienen a la mano mediante un análisis exploratorio de datos. Esta parte es crucial en cualquier análisis estadístico pues en este primer paso se encuentra mucha información relevante sobre el fenómeno que se está trabajando.
 
-Los datos que se usan en este proyecto corresponden a localidades de inicio de incendios forestales en la región de las Montañas Azules, en los estados de Oregon, Washington e Idaho. La información corresponde a incendios que comenzaron entre el 01 de abril de 1986 y el 31 de julio de 1993. Se tienen medidas las variables latitud, longitud, año, mes, día, tamaño, elevación, pendiente, orientación de la ladera donde ocurrió el incendio, días transcurridos desde el 1 de abril de 1986, y vegetación. Se pueden ver la presentación de los datos en la tabla `r figr('tabladatos', FALSE, TRUE, 'table')`.
+Los datos que se usan en este proyecto corresponden a ubicaciones de incendios forestales en la región de las Montañas Azules. La información corresponde a incendios que comenzaron entre el 01 de abril de 1986 y el 31 de julio de 1993. Se tienen medidas las variables latitud, longitud, año, mes, día, tamaño, elevación, pendiente, orientación de la ladera donde ocurrió el incendio, días transcurridos desde el 1 de abril de 1986, y vegetación. Se pueden ver la presentación de los datos en la tabla `r figr('tabladatos', FALSE, TRUE, 'table')`.
 
 ```{r, tabladatos, echo=FALSE, results='asis', message=FALSE}
 rayos <- read.csv('./Datos/rayositam.csv')
@@ -90,7 +90,7 @@ rayos.2$elev_cat <- cut(rayos.2$elev, breaks=6)
 rayos.2$aspect_cat <- cut(rayos.2$aspect, breaks=6)
 ```
 
-La dispersión de los incendios en el mapa se puede ver en la figura `r figr('puntosmapaelev', FALSE, TRUE, 'figure')`; donde se muestran los puntos de acuerdo a la elevación del terreno y el tamaño del incendio. Por el momento no se puede decir mucho sobre la relación que pueda existir entre las variables, excepto tal vez que al norte casi no hubo incendios y que en las zonas con menor elevación hay más incendios; sin embargo no son hipótesis que se puedan rechazar solamente viendo el mapa. La distribución de incendios pde acuerdo a la elevación se puede ver en la figura `r figr('incendioselevacion', FALSE, TRUE, 'figure')`. El mayor número de incendios está entre $1150$ m y $1920$ m de altura.
+La dispersión de los incendios en el mapa se puede ver en la figura `r figr('puntosmapaelev', FALSE, TRUE, 'figure')`; donde se muestran los puntos de acuerdo a la elevación del terreno y el tamaño del incendio. Por el momento no se puede decir mucho sobre la relación que pueda existir entre las variables, excepto tal vez que al norte casi no hubo incendios y que en las zonas con menor elevación hay más incendios; sin embargo no son hipótesis que se puedan rechazar solamente viendo el mapa. La distribución de incendios de acuerdo a la elevación se puede ver en la figura `r figr('incendioselevacion', FALSE, TRUE, 'figure')`. El mayor número de incendios está entre $1150$ m y $1920$ m de altura.
 
 ```{r, puntosmapaelev, echo=FALSE, fig.cap='Dispersión de incendios en las Montañas Azules'}
 ggplot() + 
@@ -114,14 +114,13 @@ rayos_elev_temp <- rayos.2 %>% group_by(yr, elev_cat) %>% summarise(Número=n())
 ggplot(rayos_elev_temp, aes(x=elev_cat, y=Proporción)) + xlab('Elevación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('hj')) + theme(axis.text.x = element_text(angle = 25, hjust = 1))
 ```
 
-Ahora, se analizará la elevación en el contexto temporal. En la figura `r figr('incendioselevaciontemp', FALSE, TRUE, 'figure')` se aprecia la distribución del número de incendios de acuerdo a la elevación y al año. En cada año se mantiene la misma forma y la mayoría de los incendios ocurren a la misma altura en cada año, así que con solo ver la gráfica, se puede rechazar la hipótesis de dependencia temporal.
+Ahora, se analizará la elevación en el contexto temporal. En la figura `r figr('incendioselevaciontemp', FALSE, TRUE, 'figure')` se aprecia la distribución del número de incendios de acuerdo a la elevación y al año. En cada año se mantiene la misma forma y la mayoría de los incendios ocurren a la misma altura en cada año, así que se puede decir que la proporción de incendios en cada año se mantiene constante a distintas alturas.
 
 ```{r, incendioselevaciontemp, fig.cap='Distribución del número de incendios de acuerdo a la elevación por año'}
 ggplot(rayos_elev_temp, aes(x=elev_cat, y=Proporción)) + xlab('Elevación') + ylab('Proporción de incendios') + geom_bar(stat='identity') + guides(fill=guide_legend('hj')) + theme(axis.text.x = element_text(angle = 35, hjust = 1)) + facet_wrap(~yr)
 ```
 
-
-Si se divide a los datos por año y los se ven en el plano como en la figura `r figr('puntosmapaanio', FALSE, TRUE, 'figure')`, se ve que hubo mayor número de incendios en 1986 y menos en 1993, pero no parece haber un patrón muy evidente en la distribución espacial.
+Si se divide a los datos por año y se proyectan en el plano como en la figura `r figr('puntosmapaanio', FALSE, TRUE, 'figure')`, se ve que hubo mayor número de incendios en 1986 y menos en 1993, pero no parece haber un patrón muy evidente en la distribución espacial.
 
 ```{r, puntosmapaanio, echo=FALSE, fig.cap='Dispersión de incendios en las Montañas Azules por año'}
 ggplot() +
@@ -157,7 +156,7 @@ ggplot(rayos.estacion.veg, aes(x=estac, y=prop, fill=factor(veg9))) + geom_bar(s
 
 Es de interés saber si los incendios se distribuyen al azar o si existe alguna dependencia espacial; puede ser que exista alguna tendencia a una configuración de conglomerados (\textit{clusters}). Aunque ya se analizó un poco esto visualmente, en esta sección se irá más a fondo en el aspecto cuantitativo y con herramientas de estadística espacial se procederá a ajustar y probar modelos; en particular, modelos de procesos puntuales para datos espaciales.
 
-Un punto de partida conveniente en el análisis de procesos puntuales espaciales es probar la hipótesis de \textbf{aleatoriedad espacial completa} (AEC), la cual se puede definir como un proceso Poisson homogéneo (PPH) en $\mathbb{R}^n$, esto es, el número de puntos contenidos en cualquier región $A$, $N(A)$, sigue una distribución Poisson con media $lambda \vert A \vert$; donde $\vert A \vert$ es el área de la región $A$ y $\lambda$ es el parámetro de intensidad del proceso y además los puntos en la región $A$ se distribuyen de manera aleatoria e independiente con distribución uniforme en $A$. Esto significa que si esta hipótesis fuera cierta, entonces los eventos (incendios en este caso) ocurren totalmente al azar, de forma constante en la región y que no hay interacción entre eventos.
+Un punto de partida conveniente en el análisis de procesos puntuales espaciales es probar la hipótesis de \textbf{aleatoriedad espacial completa} (AEC), la cual se puede definir como un proceso Poisson homogéneo (PPH) en $\mathbb{R}^n$, esto es, el número de puntos contenidos en cualquier región $A$, $N(A)$, sigue una distribución Poisson con media $\lambda \vert A \vert$; donde $\vert A \vert$ es el área de la región $A$ y $\lambda$ es el parámetro de intensidad del proceso y además los puntos en la región $A$ se distribuyen de manera aleatoria e independiente con distribución uniforme en $A$. Esto significa que si esta hipótesis fuera cierta, entonces los eventos (incendios en este caso) ocurren totalmente al azar, de forma constante en la región y que no hay interacción entre eventos.
 
 Existen diversos estadísticos utilizados para probar la hipótesis de AEC; uno particular está basado en conteos de eventos en cuadrantes (áreas bien definidas, usualmente rectangulares) en la región de interés $A$. Otro estadístico está basado en distancias entre eventos, en específico, el vecino más cercano, ya sea desde un punto $x$ del patrón observado, o desde un punto arbitrario. Y otro más es la $K$ de Ripley, la cual se define como $K(h) = \dfrac{1}{\lambda} \mathbb{E}$[# extra de eventos dentro de una distancia $h$ a un evento arbitrario].
 
@@ -371,7 +370,7 @@ CoefModelos <- data.frame(Variable = names(mod.verano$coef), Primavera=mod.prima
 print(xtable(CoefModelos, caption='Coeficientes de los modelos ajustados', digits=4), comment=FALSE)
 ```
 
-```{r, grafcoefs, fig.cap='Coeficientes estimados de las variables en cada modelo.', fig.height=3.5, fig.width=5.5}
+```{r, grafcoefs, fig.cap='Coeficientes estimados de las variables en cada modelo.', fig.height=3, fig.width=5}
 CoefsGraf <- CoefModelos %>% gather(Estación, Coeficiente, Primavera, Verano, Otoño)
 ggplot(CoefsGraf, aes(x=Variable, y=Coeficiente, color=Estación)) + geom_point(size=3) + theme(axis.text.x = element_text(angle = 35, hjust = 1))  + scale_colour_colorblind() 
 ```
